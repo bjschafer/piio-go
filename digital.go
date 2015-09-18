@@ -1,153 +1,203 @@
 package piio
 
 import (
-	"Error"
-	"fmt"
+	"log"
 	"os"
 
-	"github.com/kidoman/embd/host/generic"
+	"github.com/kidoman/embd"
 )
 
+// Pin definitions
 const (
-	MCP23017_IODIRA = 0x00
-	MCP23017_IODIRB = 0x01
-	MCP23017_GPIOA  = 0x12
-	MCP23017_GPIOB  = 0x13
-	MCP23017_GPPUA  = 0x0C
-	MCP23017_GPPUB  = 0x0D
-	MCP23017_OLATA  = 0x14
-	MCP23017_OLATB  = 0x15
-	MCP23008_GPIOA  = 0x09
-	MCP23008_GPPUA  = 0x06
-	MCP23008_OLATA  = 0x0A
+	Mcp23017IoDirA = 0x00
+	Mcp23017IoDirB = 0x01
+	Mcp23017GpioA  = 0x12
+	Mcp23017GpioB  = 0x13
+	Mcp23017GppuA  = 0x0C
+	Mcp23017GppuB  = 0x0D
+	Mcp23017OlatA  = 0x14
+	Mcp23017OlatB  = 0x15
+	Mcp23008GpioA  = 0x09
+	Mcp23008GppuA  = 0x06
+	Mcp23008OlatA  = 0x0A
 )
 
+// error log - to quit on err
 var (
-	Error *Log.Logger
+	Error *log.Logger
 )
 
-type piio_digital struct {
-	i2c       i2cBus
+type piioDigital struct {
+	i2c       embd.I2CBus
 	address   byte
-	numGpios  int
+	numGpios  uint
 	direction byte
 }
 
-func (this piio_digital) Init(address byte, numGpios int) {
+func (pd *piioDigital) Init(address byte, numGpios int) {
 	// initialize the Error!
-	Error = log.New(errorHandle,
+	Error = log.New(os.Stderr,
 		"ERROR: ",
 		log.Ldate|log.Ltime|log.Lshortfile)
+	var err error
 
 	if numGpios >= 0 && numGpios <= 16 {
-		Error.Fatal("Number of GPIOs must be between 0 and 16.")
+		Error.Fatal("Number of Gpios must be between 0 and 16.")
 	}
 
-	this.i2c = NewI2CBus(0)
-	this.i2c.address = address
-	this.address = address
-	this.numGpios = numGpios
+	pd.i2c = embd.NewI2CBus(address)
+	pd.address = address
+	pd.numGpios = uint(numGpios)
 
 	// set defaults
 	if numGpios <= 8 {
-		if _, err := self.i2c.WriteByte(MCP23017_IODIRA, 0xFF); err != nil { // all inputs on port A
+		if err := pd.i2c.WriteByte(Mcp23017IoDirA, 0xFF); err != nil { // all inputs on port A
 			Error.Fatal("Unable to write byte.")
 		}
-		if this.direction, err = this.i2c.ReadByte(MCP23017_IODIRA); err != nil {
+		if pd.direction, err = pd.i2c.ReadByte(Mcp23017IoDirA); err != nil {
 			Error.Fatal("Unable to write byte.")
 		}
-		if _, err := this.i2c.WriteByte(MCP23008_GPPUA, 0x00); err != nil {
+		if err := pd.i2c.WriteByte(Mcp23008GppuA, 0x00); err != nil {
 			Error.Fatal("Unable to write byte.")
 		}
 	} else if numGpios > 8 {
-		this.i2c.WriteByte(MCP23017_IODIRA, 0XFF) // all inputs on port A
-		this.i2c.WriteByte(MCP23017_IODIRB, 0XFF) // all inpots on port B
-		this.direction = this.i2c.ReadByte(MCP23017_IODIRA) | (this.i2c.ReadByte(MCP23017_IODIRB) << 8)
-		this.i2c.WriteByte(MCP23017_GPPUA, 0x00)
-		this.i2c.WriteByte(MCP23017_GPPUB, 0x00)
+		if err := pd.i2c.WriteByte(Mcp23017IoDirA, 0XFF); err != nil { // all inputs on port A
+			Error.Fatal("Unable to write byte.")
+		}
+		if err := pd.i2c.WriteByte(Mcp23017IoDirB, 0XFF); err != nil { // all inpots on port B
+			Error.Fatal("Unable to write byte.")
+		}
+		var t1, t2 byte
+		if t1, err = pd.i2c.ReadByte(Mcp23017IoDirA); err != nil {
+			Error.Fatal("Unable to read byte.")
+		}
+		if t2, err = pd.i2c.ReadByte(Mcp23017IoDirB); err != nil {
+			Error.Fatal("Unable to read byte.")
+		}
+		pd.direction = t1 | (t2 << 8)
+		if err := pd.i2c.WriteByte(Mcp23017GppuA, 0x00); err != nil {
+			Error.Fatal("Unable to write byte.")
+		}
+		if err := pd.i2c.WriteByte(Mcp23017GppuB, 0x00); err != nil {
+			Error.Fatal("Unable to write byte.")
+		}
 	}
 }
 
-func (this piio_digital) changebit(bitmap int, bit int, value int) {
+func (pd *piioDigital) changebit(bitmap byte, bit uint, value uint) byte {
 	if value == 0 {
 		return bitmap & ^(1 << bit)
 	} else if value == 1 {
 		return bitmap | (1 << bit)
 	} else {
 		Error.Fatalf("Value is %d, must be 0 or 1", value)
+		return bitmap
 	}
 }
 
-func (this piio_digital) readAndChangePin(port int, pin int, value int, currvalue int) int {
-	if pin < 0 || pin >= this.numGpios {
-		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, this.numGpios)
+func (pd *piioDigital) readAndChangePin(port byte, pin uint, value uint) byte {
+	var err error
+	if pin < 0 || pin >= pd.numGpios {
+		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, pd.numGpios)
 	}
-
-	if currvalue == -1 {
-		currvalue = this.i2c.ReadByte(port)
+	var currvalue byte
+	if currvalue, err = pd.i2c.ReadByte(port); err != nil {
+		Error.Fatal("Unable to read byte.")
 	}
-
-	newvalue := this.changebit(currvalue, pin, value)
-	this.i2c.WriteByte(port, newvalue)
+	newvalue := pd.changebit(currvalue, pin, value)
+	if err := pd.i2c.WriteByte(port, newvalue); err != nil {
+		Error.Fatal("Unable to write byte.")
+	}
 	return newvalue
 }
 
-func (this piio_digital) Pullup(pin int, value int) {
-	if this.numGpios <= 8 {
-		return this.readAndChangePin(MCP23008_GPPUA, pin, value, -1)
-	} else if this.numGpios <= 16 {
-		lvalue := this.readAndChangePin(MCP23017_GPPUA, pin, value, -1)
-		if pin < 8 {
-			return -1
-		} else {
-			return this.readAndChangePin(MCP23017_GPPUB, pin-8, value) << 8
-		}
+func (pd *piioDigital) readAndChangePinWithCurrVal(port byte, pin uint, value uint, currval byte) byte {
+	if pin < 0 || pin >= pd.numGpios {
+		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, pd.numGpios)
+	}
+	newvalue := pd.changebit(currval, pin, value)
+	if err := pd.i2c.WriteByte(port, newvalue); err != nil {
+		Error.Fatal("Unable to write byte.")
+	}
+	return newvalue
+}
+
+func (pd *piioDigital) Pullup(pin uint, value uint) byte {
+	if pd.numGpios <= 8 {
+		return pd.readAndChangePin(Mcp23008GppuA, pin, value)
+	} else {
+		// if pin < 8 {
+		// 	return -1
+		// }
+		return pd.readAndChangePin(Mcp23017GppuB, pin-8, value) << 8
 	}
 }
 
 // set pin to either input or output mode
-func (this piio_digital) Config(pin int, mode int) int {
-	if this.numGpios <= 8 {
-		this.direction = this.readAndChangePin(MCP23017_IODIRA, pin, mode)
-	} else if this.numGpios <= 16 {
+func (pd *piioDigital) Config(pin uint, mode uint) byte {
+	if pd.numGpios <= 8 {
+		pd.direction = pd.readAndChangePin(Mcp23017IoDirA, pin, mode)
+	} else if pd.numGpios <= 16 {
 		if pin < 8 {
-			this.direction = this.readAndChangePin(MCP23017_IODIRA, pin, mode)
+			pd.direction = pd.readAndChangePin(Mcp23017IoDirA, pin, mode)
 		} else {
-			this.direction |= this.readAndChangePin(MCP23017_IODIRB, pin-8, mode) << 8
+			pd.direction |= pd.readAndChangePin(Mcp23017IoDirB, pin-8, mode) << 8
 		}
 	}
 
-	return this.direction
+	return pd.direction
 }
 
-func (this piio_digital) Output(pin int, value int) int {
-	if this.numGpios <= 8 {
-		return this.readAndChangePin(MCP23008_GPIOA, pin, value, this.i2c.ReadByte(MCP23008_OLATA))
-	} else if this.numGpios <= 16 {
-		if pin < 8 {
-			return this.readAndChangePin(MCP23017_GPIOA, pin, value, this.i2c.ReadByte(MCP23017_OLATA))
-		} else {
-			return this.readAndChangePin(MCP23017_GPIOB, pin-8, value, this.i2c.ReadByte(MCP23017_OLATB)) << 8
+func (pd *piioDigital) output(pin uint, value uint) byte {
+	var tmp byte
+	var err error
+	if pd.numGpios <= 8 {
+		if tmp, err = pd.i2c.ReadByte(Mcp23008OlatA); err != nil {
+			Error.Fatal("Unable to read byte.")
 		}
+		return pd.readAndChangePinWithCurrVal(Mcp23008GpioA, pin, value, tmp)
+	} else {
+		if pin < 8 {
+			if tmp, err = pd.i2c.ReadByte(Mcp23017OlatA); err != nil {
+				Error.Fatal("Unable to read byte.")
+			}
+			return pd.readAndChangePinWithCurrVal(Mcp23017GpioA, pin, value, tmp)
+		}
+		if tmp, err = pd.i2c.ReadByte(Mcp23017OlatB); err != nil {
+			Error.Fatal("Unable to read byte.")
+		}
+		return pd.readAndChangePinWithCurrVal(Mcp23017GpioB, pin-8, value, tmp) << 8
 	}
-	// self.outputvalue = self._readandchangepin(MCP23017_IODIRA, pin, value, self.outputvalue)
+	// self.outputvalue = self.readandchangepin(Mcp23017IoDirA, pin, value, self.outputvalue)
 }
 
-func (this piio_digital) Input(pin int) int {
-	if pin < 0 || pin >= this.numGpios {
-		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, this.numGpios)
+func (pd *piioDigital) Output(pin uint, value uint) byte {
+	return pd.readAndChangePinWithCurrVal(Mcp23017IoDirA, pin, value, pd.output(pin, value))
+}
+
+func (pd *piioDigital) Input(pin uint) byte {
+	var err error
+	if pin < 0 || pin >= pd.numGpios {
+		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, pd.numGpios)
 	}
-	if this.direction&(1<<pin) != 0 {
+	if pd.direction&(1<<pin) != 0 {
 		Error.Fatalf("Pin %d not set to input", pin)
 	}
 
-	var value int
+	var value, value2 byte
 
-	if this.numGpios <= 8 {
-		value = this.i2c.ReadByte(MCP23008_GPIOA)
-	} else if this.numGpios > 8 && this.numGpios <= 16 {
-		value = this.i2c.ReadByte(MCP23017_GPIOA)
-		value |= this.i2c.ReadByte(MCP23017_GPIOB) << 8
+	if pd.numGpios <= 8 {
+		if value, err = pd.i2c.ReadByte(Mcp23008GpioA); err != nil {
+			Error.Fatal("Unable to read byte.")
+		}
+	} else if pd.numGpios > 8 && pd.numGpios <= 16 {
+		if value, err = pd.i2c.ReadByte(Mcp23017GpioA); err != nil {
+			Error.Fatal("Unable to read byte.")
+		}
+		if value2, err = pd.i2c.ReadByte(Mcp23017GpioB); err != nil {
+			Error.Fatal("Unable to read byte.")
+		}
+		value = value | (value2 << 8)
 	}
 
 	return value & (1 << pin)
