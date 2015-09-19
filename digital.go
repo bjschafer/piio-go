@@ -1,4 +1,4 @@
-package piio
+package main
 
 import (
 	"log"
@@ -27,14 +27,14 @@ var (
 	Error *log.Logger
 )
 
-type piioDigital struct {
+type PiioDigital struct {
 	i2c       embd.I2CBus
 	address   byte
 	numGpios  uint
 	direction byte
 }
 
-func (pd *piioDigital) Init(address byte, numGpios int) {
+func (pd *PiioDigital) Init(address byte, numGpios int) {
 	// initialize the Error!
 	Error = log.New(os.Stderr,
 		"ERROR: ",
@@ -84,7 +84,7 @@ func (pd *piioDigital) Init(address byte, numGpios int) {
 	}
 }
 
-func (pd *piioDigital) changebit(bitmap byte, bit uint, value uint) byte {
+func (pd *PiioDigital) changebit(bitmap byte, bit uint, value uint) byte {
 	if value == 0 {
 		return bitmap & ^(1 << bit)
 	} else if value == 1 {
@@ -95,7 +95,7 @@ func (pd *piioDigital) changebit(bitmap byte, bit uint, value uint) byte {
 	}
 }
 
-func (pd *piioDigital) readAndChangePin(port byte, pin uint, value uint) byte {
+func (pd *PiioDigital) readAndChangePin(port byte, pin uint, value uint) byte {
 	var err error
 	if pin < 0 || pin >= pd.numGpios {
 		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, pd.numGpios)
@@ -111,7 +111,7 @@ func (pd *piioDigital) readAndChangePin(port byte, pin uint, value uint) byte {
 	return newvalue
 }
 
-func (pd *piioDigital) readAndChangePinWithCurrVal(port byte, pin uint, value uint, currval byte) byte {
+func (pd *PiioDigital) readAndChangePinWithCurrVal(port byte, pin uint, value uint, currval byte) byte {
 	if pin < 0 || pin >= pd.numGpios {
 		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, pd.numGpios)
 	}
@@ -122,7 +122,7 @@ func (pd *piioDigital) readAndChangePinWithCurrVal(port byte, pin uint, value ui
 	return newvalue
 }
 
-func (pd *piioDigital) Pullup(pin uint, value uint) byte {
+func (pd *PiioDigital) Pullup(pin uint, value uint) byte {
 	if pd.numGpios <= 8 {
 		return pd.readAndChangePin(Mcp23008GppuA, pin, value)
 	} else {
@@ -134,7 +134,7 @@ func (pd *piioDigital) Pullup(pin uint, value uint) byte {
 }
 
 // set pin to either input or output mode
-func (pd *piioDigital) Config(pin uint, mode uint) byte {
+func (pd *PiioDigital) Config(pin uint, mode uint) byte {
 	if pd.numGpios <= 8 {
 		pd.direction = pd.readAndChangePin(Mcp23017IoDirA, pin, mode)
 	} else if pd.numGpios <= 16 {
@@ -148,7 +148,7 @@ func (pd *piioDigital) Config(pin uint, mode uint) byte {
 	return pd.direction
 }
 
-func (pd *piioDigital) output(pin uint, value uint) byte {
+func (pd *PiioDigital) output(pin uint, value uint) byte {
 	var tmp byte
 	var err error
 	if pd.numGpios <= 8 {
@@ -171,11 +171,11 @@ func (pd *piioDigital) output(pin uint, value uint) byte {
 	// self.outputvalue = self.readandchangepin(Mcp23017IoDirA, pin, value, self.outputvalue)
 }
 
-func (pd *piioDigital) Output(pin uint, value uint) byte {
+func (pd *PiioDigital) Output(pin uint, value uint) byte {
 	return pd.readAndChangePinWithCurrVal(Mcp23017IoDirA, pin, value, pd.output(pin, value))
 }
 
-func (pd *piioDigital) Input(pin uint) byte {
+func (pd *PiioDigital) Input(pin uint) byte {
 	var err error
 	if pin < 0 || pin >= pd.numGpios {
 		Error.Fatalf("Pin number %d is invalid, only 0-%d are valid", pin, pd.numGpios)
