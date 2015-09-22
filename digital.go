@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/kidoman/embd"
+	_ "github.com/kidoman/embd/host/rpi"
 )
 
 // Pin definitions
@@ -41,7 +42,7 @@ func (pd *PiioDigital) Init(address byte, numGpios int) {
 		log.Ldate|log.Ltime|log.Lshortfile)
 	var err error
 
-	if numGpios >= 0 && numGpios <= 16 {
+	if numGpios < 0 || numGpios > 16 {
 		Error.Fatal("Number of Gpios must be between 0 and 16.")
 	}
 
@@ -62,6 +63,7 @@ func (pd *PiioDigital) Init(address byte, numGpios int) {
 		}
 	} else if numGpios > 8 {
 		if err := pd.i2c.WriteByte(Mcp23017IoDirA, 0XFF); err != nil { // all inputs on port A
+			Error.Print(err)
 			Error.Fatal("Unable to write byte.")
 		}
 		if err := pd.i2c.WriteByte(Mcp23017IoDirB, 0XFF); err != nil { // all inpots on port B

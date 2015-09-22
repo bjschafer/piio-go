@@ -7,7 +7,7 @@ import (
 
 func main() {
 	digital := PiioDigital{}
-	digital.Init(0x20, 16)
+	digital.Init(1, 16)
 
 	digital.Config(0, 0) // set pin 0 to output
 	digital.Config(1, 1) // set pin 1 to input
